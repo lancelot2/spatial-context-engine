@@ -140,6 +140,9 @@
 .animate-scan {
   animation: scan-sweep 1.5s ease-in-out forwards;
 }
+.animate-scan-loop {
+  animation: scan-sweep 1.7s ease-in-out infinite;
+}
 
 @keyframes caret-blink {
   0%, 49% { opacity: 1; }

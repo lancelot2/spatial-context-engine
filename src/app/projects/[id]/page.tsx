@@ -2,6 +2,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { PlanPanel } from "@/components/plan-panel"
+import { PlanDropzone } from "@/components/plan-dropzone"
 import { PlanEditor } from "@/components/plan-editor"
 import { KnowledgePanel } from "@/components/knowledge-panel"
 import { EnrichmentAssistant } from "@/components/enrichment-assistant"
@@ -123,7 +124,9 @@ export default async function ProjectPage({
           >
             Test API →
           </Link>
-          <PlanPanel projectId={project.id} hasPlan={!!project.plan_path} />
+          {project.plan_path && (
+            <PlanPanel projectId={project.id} hasPlan />
+          )}
         </div>
       </header>
 
@@ -152,9 +155,7 @@ export default async function ProjectPage({
         </aside>
         <div className="relative min-h-0 flex-1">
           {nodes.length === 0 ? (
-            <div className="flex h-full items-center justify-center p-10 text-center text-sm text-muted-foreground">
-              Upload a floor plan to generate your first Spatial Graph.
-            </div>
+            <PlanDropzone projectId={project.id} />
           ) : (
             <PlanEditor
               key={graphKey}
