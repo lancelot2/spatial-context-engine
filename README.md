@@ -1,11 +1,24 @@
-# Spatial Context Engine (SCE)
+# NaviGraph
 
-Give robots a memory of the building.
+Turn any floor plan into robot memory.
 
-SCE turns a floor plan into a semantic **Spatial Graph**. At navigation time it
-localizes the robot from a single camera frame and returns a rich, plain-text
+NaviGraph turns a floor plan into a semantic **Spatial Graph**. At navigation time
+it localizes the robot from a single camera frame and returns a rich, plain-text
 **context** for any navigation model (Robostral, OpenVLA, GR00T, …) — no 3D
 reconstruction required.
+
+## Free hosted app
+
+NaviGraph runs as an entirely free hosted web app at
+**[navigraph.cloud](https://navigraph.cloud)**. Create an account and, at no cost:
+
+- **Upload** a floor plan — a navigation graph is built automatically.
+- **Adjust & enrich** the spatial graph — rename rooms, fix connections, and add
+  photos for localization and landmark detection.
+- **Generate API keys** to query the context endpoint from your own robots or
+  backend.
+
+No setup, no billing.
 
 ## Pipeline
 
@@ -44,8 +57,8 @@ npm run dev
 ## API
 
 ```bash
-curl -X POST https://your-app.netlify.app/api/context \
-  -H "Authorization: Bearer sce_your_api_key" \
+curl -X POST https://navigraph.cloud/api/context \
+  -H "Authorization: Bearer navi_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
     "projectId": "<projectId>",
@@ -60,13 +73,3 @@ curl -X POST https://your-app.netlify.app/api/context \
 - `current_location` — optional fallback room name (skips image localization).
 
 Generate and manage keys at `/dashboard/api`.
-
-## Deploy (Netlify)
-
-1. Push this repo to GitHub.
-2. In Netlify: **Add new site → Import from GitHub** and pick the repo.
-3. Set the environment variables above (Site settings → Environment variables).
-4. Deploy. `netlify.toml` wires the official Next.js runtime.
-
-The Supabase schema (tables, RLS, pgvector functions) already lives in your
-Supabase project via migrations.
