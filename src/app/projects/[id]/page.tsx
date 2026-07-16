@@ -100,17 +100,26 @@ export default async function ProjectPage({
 
   return (
     <div className="flex h-screen flex-1 flex-col">
-      <header className="flex items-center justify-between border-b px-6 py-4">
-        <div>
-          <Link href="/dashboard" className="text-sm text-muted-foreground hover:underline">
-            ← All projects
+      <header className="flex items-center justify-between border-b border-border bg-card/60 px-6 py-3">
+        <div className="flex items-center gap-4">
+          <Link
+            href="/dashboard"
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label="All buildings"
+          >
+            ←
           </Link>
-          <h1 className="text-xl font-semibold tracking-tight">{project.name}</h1>
+          <div>
+            <span className="label-mono">building</span>
+            <h1 className="font-display text-xl leading-tight tracking-tight">
+              {project.name}
+            </h1>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Link
             href={`/projects/${project.id}/test`}
-            className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+            className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-accent"
           >
             Test API →
           </Link>

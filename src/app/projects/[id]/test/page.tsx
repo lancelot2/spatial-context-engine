@@ -37,19 +37,25 @@ export default async function TestPage({
 
   return (
     <div className="flex h-screen flex-1 flex-col">
-      <header className="flex items-center justify-between border-b px-6 py-4">
-        <div>
+      <header className="flex items-center justify-between border-b border-border bg-card/60 px-6 py-3">
+        <div className="flex items-center gap-4">
           <Link
             href={`/projects/${project.id}`}
-            className="text-sm text-muted-foreground hover:underline"
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label="Back to editor"
           >
-            ← Back to editor
+            ←
           </Link>
-          <h1 className="text-xl font-semibold tracking-tight">
-            {project.name} · Context API test
-          </h1>
+          <div>
+            <span className="label-mono">context api · test console</span>
+            <h1 className="font-display text-xl leading-tight tracking-tight">
+              {project.name}
+            </h1>
+          </div>
         </div>
-        <code className="rounded bg-muted px-2 py-1 text-xs">POST /api/context</code>
+        <code className="rounded-md border border-border bg-card px-2.5 py-1 font-mono text-xs text-brand">
+          POST /api/context
+        </code>
       </header>
 
       <ContextTester projectId={project.id} planUrl={planUrl} nodes={nodes} />

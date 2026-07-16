@@ -12,15 +12,15 @@ export function SidebarTabs({
   const [tab, setTab] = useState<"assistant" | "catalogue">("catalogue")
 
   const tabClass = (active: boolean) =>
-    `flex-1 border-b-2 px-3 py-2 text-sm ${
+    `relative flex-1 px-3 py-2.5 text-sm transition-colors ${
       active
-        ? "border-foreground font-medium"
-        : "border-transparent text-muted-foreground hover:text-foreground"
+        ? "font-medium text-foreground after:absolute after:inset-x-3 after:-bottom-px after:h-0.5 after:rounded-full after:bg-brand"
+        : "text-muted-foreground hover:text-foreground"
     }`
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 border-b">
+      <div className="flex shrink-0 border-b border-border bg-card/50">
         <button
           className={tabClass(tab === "catalogue")}
           onClick={() => setTab("catalogue")}

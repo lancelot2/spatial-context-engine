@@ -12,7 +12,7 @@ export async function createApiKey(formData: FormData): Promise<void> {
   } = await supabase.auth.getUser()
   if (!user) return
 
-  const key = "sce_" + randomBytes(24).toString("hex")
+  const key = "navi_" + randomBytes(24).toString("hex")
   await supabase.from("api_keys").insert({ user_id: user.id, name, key })
   revalidatePath("/dashboard/api")
 }

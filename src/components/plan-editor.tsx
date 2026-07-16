@@ -189,7 +189,7 @@ export function PlanEditor({
 
   return (
     <div className="relative h-full w-full">
-      <div className="absolute left-3 top-3 z-20 flex items-center gap-1 rounded-lg border bg-white/95 p-1 shadow-sm">
+      <div className="absolute left-3 top-3 z-20 flex items-center gap-1 rounded-lg border border-border bg-card/95 p-1 shadow-sm backdrop-blur">
         <button
           onClick={() => setZoom((z) => clamp(z - 0.25, 0.5, 3))}
           className="flex h-7 w-7 items-center justify-center rounded hover:bg-muted"
@@ -243,7 +243,7 @@ export function PlanEditor({
         )}
       </div>
 
-      <div className="h-full w-full overflow-auto bg-neutral-100">
+      <div className="bg-grid h-full w-full overflow-auto bg-secondary/50">
         <div
           ref={containerRef}
           className="relative mx-auto my-4 select-none"

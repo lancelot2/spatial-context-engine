@@ -10,7 +10,7 @@ export type ContextDataSource = {
   matchLocation: (embedding: number[]) => Promise<string | null>
 }
 
-// The Spatial Context Engine. Turns an instruction + camera frame into a rich,
+// NaviGraph's context engine. Turns an instruction + camera frame into a rich,
 // plain-text navigation context for models like Robostral Navigate.
 
 export type ContextRequest = {

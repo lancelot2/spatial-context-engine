@@ -166,10 +166,10 @@ export function ContextTester({
 
             <PlanPathView planUrl={planUrl} nodes={nodes} pathIds={pathIds} />
 
-            <div className="relative">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Context (Robostral input)
+            <div className="overflow-hidden rounded-xl border border-border bg-[#181713]">
+              <div className="flex items-center justify-between border-b border-white/10 px-4 py-2.5">
+                <span className="label-mono !text-white/50">
+                  context · robostral input
                 </span>
                 <button
                   onClick={() => {
@@ -177,12 +177,12 @@ export function ContextTester({
                     setCopied(true)
                     setTimeout(() => setCopied(false), 1500)
                   }}
-                  className="text-xs text-muted-foreground hover:underline"
+                  className="font-mono text-xs text-white/60 hover:text-white"
                 >
-                  {copied ? "Copied!" : "Copy"}
+                  {copied ? "copied!" : "copy"}
                 </button>
               </div>
-              <pre className="whitespace-pre-wrap rounded-lg border bg-muted/40 p-3 font-mono text-xs leading-relaxed">
+              <pre className="overflow-x-auto whitespace-pre-wrap p-4 font-mono text-xs leading-relaxed text-neutral-200">
                 {result.context}
               </pre>
             </div>
@@ -204,11 +204,13 @@ function Badge({
 }) {
   const color =
     tone === "green"
-      ? "border-green-300 bg-green-50 text-green-800"
-      : "border-blue-300 bg-blue-50 text-blue-800"
+      ? "border-clay/30 bg-clay/10 text-clay"
+      : "border-brand/30 bg-brand/10 text-brand"
   return (
-    <span className={`rounded-md border px-2 py-1 ${color}`}>
-      <span className="text-xs opacity-70">{label}: </span>
+    <span className={`rounded-md border px-2.5 py-1 ${color}`}>
+      <span className="label-mono !text-[10px] !tracking-normal opacity-80">
+        {label}{" "}
+      </span>
       <span className="font-medium">{value ?? "—"}</span>
     </span>
   )
