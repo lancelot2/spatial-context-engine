@@ -30,29 +30,29 @@ export async function createProject(formData: FormData): Promise<void> {
   redirect(`/projects/${data.id}`)
 }
 
-// Uploads a floor plan and immediately builds the first Spatial Graph.
-export async function uploadPlanAndGenerate(
+// Builds the first Spatial Graph from a plan the browser already uploaded to
+// Storage. The heavy bytes go straight to Storage (bypassing the Server Action
+// ~1 MB request-body limit, which otherwise 502s); this action only carries ids.
+export async function generatePlanGraph(
   projectId: string,
-  formData: FormData,
+  planPath: string,
 ): Promise<void> {
-  const file = formData.get("plan")
-  if (!(file instanceof File) || file.size === 0) return
-
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) redirect("/login")
 
-  const ext = file.name.split(".").pop() ?? "bin"
-  const path = `${user.id}/${projectId}/plan.${ext}`
+  // Defense in depth: only accept a path inside the caller's own folder.
+  if (!planPath.startsWith(`${user.id}/${projectId}/`)) {
+    throw new Error("Invalid plan path")
+  }
 
-  const { error: uploadError } = await supabase.storage
-    .from("plans")
-    .upload(path, file, { upsert: true, contentType: file.type })
-  if (uploadError) throw new Error(uploadError.message)
-
-  await supabase.from("projects").update({ plan_path: path }).eq("id", projectId)
+  const { error } = await supabase
+    .from("projects")
+    .update({ plan_path: planPath })
+    .eq("id", projectId)
+  if (error) throw new Error(error.message)
 
   await buildGraph(projectId)
   revalidatePath(`/projects/${projectId}`)
