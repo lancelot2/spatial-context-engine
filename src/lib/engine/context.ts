@@ -78,20 +78,19 @@ async function localize(
   return nodeId ? (graph.nodes.find((n) => n.id === nodeId) ?? null) : null
 }
 
-// Step 2/retrieval helper — resolve the destination node from free-text
-// instruction by matching node names and photo-derived synonyms.
-function resolveDestination(
+// Find the room whose name, synonyms, or photo/tag-derived landmarks/signs best
+// appear in `text` (longest match wins, to avoid weak partial hits).
+function matchNodeInText(
   graph: SpatialGraph,
-  instruction: string,
+  text: string,
+  excludeId?: string,
 ): GraphNode | null {
-  const text = instruction.toLowerCase()
+  const lower = text.toLowerCase()
   let best: GraphNode | null = null
   let bestLen = 0
 
   for (const node of graph.nodes) {
-    // Match the instruction against the room's name, synonyms and its
-    // photo/tag-derived landmarks and signs, so "go to the baby crib" resolves
-    // to the room tagged with that landmark.
+    if (excludeId && node.id === excludeId) continue
     const candidates = [
       node.name ?? "",
       ...(node.metadata.synonyms ?? []),
@@ -100,14 +99,53 @@ function resolveDestination(
     ]
     for (const c of candidates) {
       const key = c.trim().toLowerCase()
-      // Prefer the longest match to avoid weak partial hits.
-      if (key.length >= 3 && text.includes(key) && key.length > bestLen) {
+      if (key.length >= 3 && lower.includes(key) && key.length > bestLen) {
         best = node
         bestLen = key.length
       }
     }
   }
   return best
+}
+
+// Step 2/retrieval helper — resolve the destination node from a free-text
+// instruction. Prefer the phrase after "to" (the strongest destination signal),
+// falling back to the whole instruction. `excludeId` keeps the resolved origin
+// from also being picked as the destination in "from A to B" phrasings.
+function resolveDestination(
+  graph: SpatialGraph,
+  instruction: string,
+  excludeId?: string,
+): GraphNode | null {
+  const afterTo = instruction.toLowerCase().match(/\bto\s+(.+)$/)?.[1]
+  return (
+    (afterTo ? matchNodeInText(graph, afterTo, excludeId) : null) ??
+    matchNodeInText(graph, instruction, excludeId)
+  )
+}
+
+// Text-only localization — when there's no camera frame, infer the robot's
+// starting room from the instruction itself ("from the lobby to …",
+// "I'm in the kitchen, go to …", "currently at reception").
+function localizeFromInstruction(
+  graph: SpatialGraph,
+  instruction: string,
+): GraphNode | null {
+  const text = instruction.toLowerCase()
+  const cues = [
+    /\bfrom\s+(.+?)(?:\s+to\b|[.,;]|$)/,
+    /\bi(?:'m| am)\s+(?:currently\s+)?(?:in|at|inside)\s+(.+?)(?:[.,;]|$)/,
+    /\bcurrently\s+(?:in|at)\s+(.+?)(?:[.,;]|$)/,
+    /\bstart(?:ing)?\s+(?:from|at|in)\s+(.+?)(?:\s+to\b|[.,;]|$)/,
+  ]
+  for (const re of cues) {
+    const phrase = text.match(re)?.[1]
+    if (phrase) {
+      const node = matchNodeInText(graph, phrase)
+      if (node) return node
+    }
+  }
+  return null
 }
 
 // Step 4 — Context Generation. Plain text optimized for a navigation model.
@@ -162,8 +200,11 @@ export async function generateContext(
 ): Promise<ContextResult> {
   const graph = await ds.loadGraph()
 
-  // Step 1 — Localization
-  const current = await localize(graph, req, ds)
+  // Step 1 — Localization. Manual override / camera frame first; with no image,
+  // fall back to inferring the starting room from the instruction text.
+  const current =
+    (await localize(graph, req, ds)) ??
+    localizeFromInstruction(graph, req.instruction)
   if (!current) {
     return {
       current_location: null,
@@ -171,12 +212,12 @@ export async function generateContext(
       path: [],
       landmarks: [],
       context:
-        "Could not determine the robot's current location from the image. Pass `current_location` (a room name) to proceed.",
+        "Could not determine the robot's current location. Provide a camera frame, pass `current_location` (a room name), or name the starting room in the instruction (e.g. \"from the lobby to …\").",
     }
   }
 
   // Step 2 — Retrieval (resolve + gather destination knowledge)
-  const destination = resolveDestination(graph, req.instruction)
+  const destination = resolveDestination(graph, req.instruction, current.id)
   if (!destination) {
     return {
       current_location: nodeName(current),
