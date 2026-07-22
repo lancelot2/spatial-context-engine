@@ -463,19 +463,27 @@ export function PlanEditor({
                     vectorEffect="non-scaling-stroke"
                   />
                 )}
-                {polyPoints.map((p, i) => (
-                  <circle
-                    key={i}
-                    cx={p.x}
-                    cy={p.y}
-                    r={i === 0 && polyPoints.length >= 3 ? 6 : 4}
-                    fill={i === 0 && polyPoints.length >= 3 ? TYPE_COLOR[polyType] : "#fff"}
-                    stroke={TYPE_COLOR[polyType]}
-                    strokeWidth={2}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                ))}
               </svg>
+              {/* Corner dots as fixed-size HTML so they don't scale with the
+                  overlay's SVG coordinate space. */}
+              {polyPoints.map((p, i) => {
+                const closable = i === 0 && polyPoints.length >= 3
+                return (
+                  <div
+                    key={i}
+                    className="pointer-events-none absolute rounded-full border-2"
+                    style={{
+                      left: `${p.x * 100}%`,
+                      top: `${p.y * 100}%`,
+                      width: closable ? 14 : 10,
+                      height: closable ? 14 : 10,
+                      transform: "translate(-50%, -50%)",
+                      borderColor: TYPE_COLOR[polyType],
+                      background: closable ? TYPE_COLOR[polyType] : "#fff",
+                    }}
+                  />
+                )
+              })}
             </div>
           )}
         </div>
