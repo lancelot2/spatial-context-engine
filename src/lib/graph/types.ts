@@ -8,7 +8,6 @@ export const NODE_TYPES = [
   "stair",
   "elevator",
   "landmark",
-  "door",
 ] as const
 export type NodeType = (typeof NODE_TYPES)[number]
 
@@ -21,14 +20,19 @@ export const EMBEDDING_DIM = 512
 // Normalized [0,1] bounding box of a room on the plan image (stored in metadata).
 export type Bounds = { x: number; y: number; w: number; h: number }
 
+// A normalized [0,1] point on the plan image — used for polygon room outlines.
+export type Point = { x: number; y: number }
+
 // Content stored in nodes.metadata (jsonb): photo-derived semantics (Prompt 5)
 // and the room delimitation on the plan (plan editor). No DB schema change.
+// A room is a polygon when `points` (≥3) is set; otherwise the `bounds` rectangle.
 export type NodeSemantics = {
   objects?: string[]
   landmarks?: string[]
   signs?: string[]
   synonyms?: string[]
   bounds?: Bounds
+  points?: Point[]
 }
 
 export type GraphNode = {

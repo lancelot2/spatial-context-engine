@@ -3,7 +3,7 @@
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
-import type { Bounds, NodeSemantics, NodeType } from "@/lib/graph/types"
+import type { Bounds, NodeSemantics, NodeType, Point } from "@/lib/graph/types"
 
 // Create a brand-new object of a given type, with either drawn bounds or a
 // default box in the centre of the plan. Returns the new node id so the caller
@@ -27,6 +27,55 @@ export async function addNode(
   })
   revalidatePath(`/projects/${projectId}`)
   return id
+}
+
+// Create a polygon object from click-to-draw points (normalized [0,1]). Returns
+// the new node id so the caller can select it immediately.
+export async function addPolygonNode(
+  projectId: string,
+  type: NodeType = "room",
+  points: Point[],
+): Promise<string> {
+  const supabase = await createClient()
+  const id = randomUUID()
+  const xs = points.map((p) => p.x)
+  const ys = points.map((p) => p.y)
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2
+  const cy = (Math.min(...ys) + Math.max(...ys)) / 2
+  await supabase.from("nodes").insert({
+    id,
+    project_id: projectId,
+    type,
+    name: null,
+    floor: 0,
+    pos_x: Math.round(cx * 800),
+    pos_y: Math.round(cy * 600),
+    metadata: { points },
+  })
+  revalidatePath(`/projects/${projectId}`)
+  return id
+}
+
+// Move a polygon room: persist its points. Called during drag, so no revalidate.
+export async function setNodePoints(
+  projectId: string,
+  nodeId: string,
+  points: Point[],
+): Promise<void> {
+  const supabase = await createClient()
+  const { data: node } = await supabase
+    .from("nodes")
+    .select("metadata")
+    .eq("id", nodeId)
+    .eq("project_id", projectId)
+    .single()
+  const next = { ...((node?.metadata ?? {}) as NodeSemantics), points }
+  delete next.bounds // a polygon supersedes any legacy rectangle
+  await supabase
+    .from("nodes")
+    .update({ metadata: next })
+    .eq("id", nodeId)
+    .eq("project_id", projectId)
 }
 
 // Replace a node's landmark tags (kept in metadata, preserving bounds/semantics).

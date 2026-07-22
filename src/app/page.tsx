@@ -16,7 +16,7 @@ const STEPS = [
   {
     n: "01",
     title: "Upload",
-    body: "Drop in a floor plan. The vision layer traces rooms, doors, stairs and elevators into an editable graph laid right over the plan.",
+    body: "Drop in a floor plan. The vision layer traces rooms, stairs, elevators and their connections into an editable graph laid right over the plan.",
   },
   {
     n: "02",

@@ -109,7 +109,7 @@ export function PlanDropzone({ projectId }: { projectId: string }) {
           <div>
             <p className="font-medium">Plan uploaded</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Detecting rooms, doors and connections…
+              Detecting rooms and their connections…
             </p>
           </div>
         </div>
@@ -169,7 +169,7 @@ export function PlanDropzone({ projectId }: { projectId: string }) {
           </p>
         </div>
         <p className="text-xs text-muted-foreground">
-          We&apos;ll detect rooms, doors and connections automatically.
+          We&apos;ll detect rooms and their connections automatically.
         </p>
       </div>
     </div>

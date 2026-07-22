@@ -23,16 +23,18 @@ Return ONLY a JSON object (no prose) with this exact shape:
   "edges": [{ "sourceTempId": string, "targetTempId": string,
              "type": one of ${JSON.stringify(EDGE_TYPES)}, "certain": boolean }]
 }
-Rules: identify EVERY room plus all doors ("door"), staircases ("stair") and
-elevators ("elevator") visible on the plan, each as its own node — do not miss any.
-Trace the WALL lines of the plan to determine each room's extent. "bounds" is the
-element's bounding box in NORMALIZED [0,1] coordinates (x,y = top-left corner, w,h =
-width/height as fractions of the whole image); make the box tightly follow the room's
-walls (top-left = its upper-left wall corner, w/h = its wall-to-wall span). For doors
-use a small box centred on the opening in the wall. Double-check that x+w<=1 and
-y+h<=1 and that boxes do not overlap more than the walls do. pos_x/pos_y are layout
-coordinates on a ~800x600 canvas. Use "connected_to"
-for doors/passages, "adjacent_to" when unsure, "contains" for a room enclosing a
+Rules: identify EVERY room, plus entrances, staircases ("stair") and elevators
+("elevator") visible on the plan, each as its own node — do not miss any. Do NOT
+create nodes for doors; instead, wherever two rooms share a doorway, opening or
+passage, connect them with a "connected_to" edge.
+Trace the WALL lines to determine each room's extent. "bounds" is the room's bounding
+box in NORMALIZED [0,1] coordinates (x,y = top-left corner, w,h = width/height as
+fractions of the whole image). Be precise about placement: put the box edges exactly on
+the room's outer walls — measure each corner against the full image width and height,
+and double-check the box neither floats inside the room nor spills past its walls.
+Ensure x+w<=1 and y+h<=1. pos_x/pos_y are layout coordinates on a ~800x600 canvas.
+Use "connected_to" for rooms joined by a doorway/passage, "adjacent_to" when two rooms
+share a wall but you are unsure they connect, and "contains" for a room enclosing a
 landmark. Mark certain=false for connections you are not confident about.`
 
 const ANALYZE_SYSTEM = `You analyse a single photo taken inside a room of a building.

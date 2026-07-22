@@ -48,18 +48,15 @@ export function computeKnowledge(
   const nameById = new Map(graph.nodes.map((n) => [n.id, n.name]))
 
   for (const node of graph.nodes) {
-    // Doors are structural markers — they don't need a name.
-    if (node.type !== "door") {
-      total += 1
-      if (hasText(node.name)) earned += 1
-      else
-        issues.push({
-          id: `no_name:${node.id}`,
-          type: "no_name",
-          nodeId: node.id,
-          label: `Unnamed ${node.type}`,
-        })
-    }
+    total += 1
+    if (hasText(node.name)) earned += 1
+    else
+      issues.push({
+        id: `no_name:${node.id}`,
+        type: "no_name",
+        nodeId: node.id,
+        label: `Unnamed ${node.type}`,
+      })
 
     if (PLACE_TYPES.has(node.type)) {
       total += 1

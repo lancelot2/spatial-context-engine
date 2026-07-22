@@ -8,13 +8,20 @@ const TYPE_COLOR: Record<NodeType, string> = {
   stair: "#f59e0b",
   elevator: "#a855f7",
   landmark: "#ef4444",
-  door: "#64748b",
 }
 
 const clamp = (v: number, min: number, max: number) =>
   Math.min(max, Math.max(min, v))
 
 function boundsOf(n: GraphNode): Bounds {
+  const pts = n.metadata.points
+  if (pts && pts.length >= 3) {
+    const xs = pts.map((p) => p.x)
+    const ys = pts.map((p) => p.y)
+    const x = Math.min(...xs)
+    const y = Math.min(...ys)
+    return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }
+  }
   if (n.metadata.bounds) return n.metadata.bounds
   return {
     x: clamp(n.pos_x / 800 - 0.08, 0, 0.82),

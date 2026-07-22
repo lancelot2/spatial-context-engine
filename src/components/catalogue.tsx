@@ -29,7 +29,6 @@ const COLOR: Record<NodeType, string> = {
   stair: "#f59e0b",
   elevator: "#a855f7",
   landmark: "#ef4444",
-  door: "#64748b",
 }
 const LABEL: Record<NodeType, string> = {
   room: "Rooms",
@@ -37,7 +36,6 @@ const LABEL: Record<NodeType, string> = {
   stair: "Stairs",
   elevator: "Elevators",
   landmark: "Landmarks",
-  door: "Doors",
 }
 
 export function Catalogue({

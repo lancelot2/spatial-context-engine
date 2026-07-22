@@ -7,8 +7,14 @@ import {
   type GraphNode,
   type NodeType,
   type Bounds,
+  type Point,
 } from "@/lib/graph/types"
-import { setNodeBounds, addNode } from "@/app/projects/spatial-actions"
+import {
+  setNodeBounds,
+  setNodePoints,
+  addNode,
+  addPolygonNode,
+} from "@/app/projects/spatial-actions"
 import { addNodePhoto } from "@/app/projects/actions"
 import { useEditorStore } from "@/lib/store/editor"
 import { Button } from "@/components/ui/button"
@@ -19,7 +25,6 @@ const TYPE_COLOR: Record<NodeType, string> = {
   stair: "#f59e0b",
   elevator: "#a855f7",
   landmark: "#ef4444",
-  door: "#64748b",
 }
 
 const HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const
@@ -38,6 +43,15 @@ const HANDLE_STYLE: Record<Dir, string> = {
 
 const clamp = (v: number, min: number, max: number) =>
   Math.min(max, Math.max(min, v))
+
+// Bounding box of a polygon.
+function bbox(points: Point[]): Bounds {
+  const xs = points.map((p) => p.x)
+  const ys = points.map((p) => p.y)
+  const x = Math.min(...xs)
+  const y = Math.min(...ys)
+  return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }
+}
 
 // Kept at module scope so the zoom level survives the editor remounting.
 let persistedZoom = 1
@@ -58,6 +72,14 @@ type Room = {
   type: NodeType
   floor: number
   bounds: Bounds
+  points?: Point[] // present → polygon (bounds is its bbox)
+}
+
+function toRoom(n: GraphNode): Room {
+  const pts = n.metadata.points
+  const base = { id: n.id, name: n.name, type: n.type, floor: n.floor }
+  if (pts && pts.length >= 3) return { ...base, points: pts, bounds: bbox(pts) }
+  return { ...base, bounds: initialBounds(n) }
 }
 
 export function PlanEditor({
@@ -73,15 +95,7 @@ export function PlanEditor({
 }) {
   const router = useRouter()
   const containerRef = useRef<HTMLDivElement>(null)
-  const [rooms, setRooms] = useState<Room[]>(() =>
-    nodes.map((n) => ({
-      id: n.id,
-      name: n.name,
-      type: n.type,
-      floor: n.floor,
-      bounds: initialBounds(n),
-    })),
-  )
+  const [rooms, setRooms] = useState<Room[]>(() => nodes.map(toRoom))
   const selectedId = useEditorStore((s) => s.selectedId)
   const setSelectedId = useEditorStore((s) => s.setSelectedId)
 
@@ -90,12 +104,19 @@ export function PlanEditor({
     persistedZoom = zoom
   }, [zoom])
 
-  // Draw-to-create: pick a type, then drag a rectangle on the plan.
+  // Object type used by both draw modes.
   const [newType, setNewType] = useState<NodeType>("room")
+
+  // Draw-to-create (rectangle): pick a type, then drag a box on the plan.
   const [drawType, setDrawType] = useState<NodeType | null>(null)
   const drawStart = useRef<{ x: number; y: number } | null>(null)
   const previewRef = useRef<Bounds | null>(null)
   const [preview, setPreview] = useState<Bounds | null>(null)
+
+  // Click-to-draw (polygon): click each corner, then close the shape.
+  const [polyType, setPolyType] = useState<NodeType | null>(null)
+  const [polyPoints, setPolyPoints] = useState<Point[]>([])
+  const [polyCursor, setPolyCursor] = useState<Point | null>(null)
 
   function patch(id: string, next: Partial<Room>) {
     setRooms((rs) => rs.map((r) => (r.id === id ? { ...r, ...next } : r)))
@@ -109,6 +130,8 @@ export function PlanEditor({
       y: clamp((e.clientY - rect.top) / rect.height, 0, 1),
     }
   }
+
+  // ── Rectangle draw ────────────────────────────────────────────────
   function drawDown(e: React.PointerEvent) {
     const p = relPoint(e)
     if (!p) return
@@ -141,15 +164,68 @@ export function PlanEditor({
     setDrawType(null)
     if (p && t && p.w > 0.02 && p.h > 0.02) {
       const id = await addNode(projectId, t, p)
-      setSelectedId(id) // auto-select the new object so it can be named right away
+      setSelectedId(id)
       router.refresh()
     }
   }
 
-  // Copy/paste the selected object with Cmd/Ctrl+C then Cmd/Ctrl+V.
+  // ── Polygon draw ──────────────────────────────────────────────────
+  const CLOSE_DIST = 0.025
+  function polyDown(e: React.PointerEvent) {
+    const p = relPoint(e)
+    if (!p) return
+    if (
+      polyPoints.length >= 3 &&
+      Math.hypot(p.x - polyPoints[0].x, p.y - polyPoints[0].y) < CLOSE_DIST
+    ) {
+      void finishPolygon()
+      return
+    }
+    setPolyPoints((pts) => [...pts, p])
+  }
+  async function finishPolygon() {
+    const pts = polyPoints
+    const t = polyType
+    setPolyType(null)
+    setPolyPoints([])
+    setPolyCursor(null)
+    if (t && pts.length >= 3) {
+      const id = await addPolygonNode(projectId, t, pts)
+      setSelectedId(id)
+      router.refresh()
+    }
+  }
+  function cancelPolygon() {
+    setPolyType(null)
+    setPolyPoints([])
+    setPolyCursor(null)
+  }
+
+  // Enter finishes a polygon, Escape cancels either draw mode.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        cancelPolygon()
+        setDrawType(null)
+        setPreview(null)
+        drawStart.current = null
+      } else if (e.key === "Enter" && polyType && polyPoints.length >= 3) {
+        void finishPolygon()
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [polyType, polyPoints])
+
+  // ── Copy / paste the selected object ──────────────────────────────
   const stateRef = useRef({ rooms, selectedId })
   stateRef.current = { rooms, selectedId }
-  const clipboard = useRef<{ type: NodeType; bounds: Bounds } | null>(null)
+  const clipboard = useRef<{
+    type: NodeType
+    bounds?: Bounds
+    points?: Point[]
+  } | null>(null)
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const el = document.activeElement
@@ -159,21 +235,34 @@ export function PlanEditor({
       if (e.key === "c" && selectedId) {
         const r = rooms.find((x) => x.id === selectedId)
         if (r) {
-          clipboard.current = { type: r.type, bounds: r.bounds }
+          clipboard.current = r.points
+            ? { type: r.type, points: r.points }
+            : { type: r.type, bounds: r.bounds }
           e.preventDefault()
         }
       } else if (e.key === "v" && clipboard.current) {
         e.preventDefault()
         const c = clipboard.current
-        const b: Bounds = {
-          ...c.bounds,
-          x: clamp(c.bounds.x + 0.03, 0, 1 - c.bounds.w),
-          y: clamp(c.bounds.y + 0.03, 0, 1 - c.bounds.h),
+        if (c.points) {
+          const shifted = c.points.map((p) => ({
+            x: clamp(p.x + 0.03, 0, 1),
+            y: clamp(p.y + 0.03, 0, 1),
+          }))
+          void addPolygonNode(projectId, c.type, shifted).then((id) => {
+            setSelectedId(id)
+            router.refresh()
+          })
+        } else if (c.bounds) {
+          const b: Bounds = {
+            ...c.bounds,
+            x: clamp(c.bounds.x + 0.03, 0, 1 - c.bounds.w),
+            y: clamp(c.bounds.y + 0.03, 0, 1 - c.bounds.h),
+          }
+          void addNode(projectId, c.type, b).then((id) => {
+            setSelectedId(id)
+            router.refresh()
+          })
         }
-        void addNode(projectId, c.type, b).then((id) => {
-          setSelectedId(id)
-          router.refresh()
-        })
       }
     }
     window.addEventListener("keydown", onKey)
@@ -186,6 +275,8 @@ export function PlanEditor({
     fd.append("photo", file)
     void addNodePhoto(projectId, nodeId, fd).then(() => router.refresh())
   }
+
+  const drawing = drawType || polyType
 
   return (
     <div className="relative h-full w-full">
@@ -209,7 +300,7 @@ export function PlanEditor({
         {drawType ? (
           <>
             <span className="px-1 text-xs text-muted-foreground">
-              Draw the {drawType} on the plan…
+              Drag the {drawType} box on the plan…
             </span>
             <Button
               size="sm"
@@ -220,6 +311,24 @@ export function PlanEditor({
                 drawStart.current = null
               }}
             >
+              Cancel
+            </Button>
+          </>
+        ) : polyType ? (
+          <>
+            <span className="px-1 text-xs text-muted-foreground">
+              Click each corner · {polyPoints.length} added
+              {polyPoints.length >= 3 ? " · click the first point to close" : ""}
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={polyPoints.length < 3}
+              onClick={() => void finishPolygon()}
+            >
+              Finish
+            </Button>
+            <Button size="sm" variant="ghost" onClick={cancelPolygon}>
               Cancel
             </Button>
           </>
@@ -237,7 +346,18 @@ export function PlanEditor({
               ))}
             </select>
             <Button size="sm" variant="ghost" onClick={() => setDrawType(newType)}>
-              Draw
+              Box
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setPolyPoints([])
+                setPolyCursor(null)
+                setPolyType(newType)
+              }}
+            >
+              Polygon
             </Button>
           </>
         )}
@@ -266,19 +386,34 @@ export function PlanEditor({
             </div>
           )}
 
-          {rooms.map((r) => (
-            <RoomBox
-              key={r.id}
-              room={r}
-              selected={r.id === selectedId}
-              photos={photosByNode[r.id] ?? []}
-              containerRef={containerRef}
-              onSelect={() => setSelectedId(r.id)}
-              onChange={(b) => patch(r.id, { bounds: b })}
-              onCommit={(b) => setNodeBounds(projectId, r.id, b)}
-              onDropPhoto={(file) => handleDropPhoto(r.id, file)}
-            />
-          ))}
+          {rooms.map((r) =>
+            r.points ? (
+              <RoomPolygon
+                key={r.id}
+                room={r}
+                points={r.points}
+                selected={r.id === selectedId}
+                photos={photosByNode[r.id] ?? []}
+                containerRef={containerRef}
+                onSelect={() => setSelectedId(r.id)}
+                onChange={(pts) => patch(r.id, { points: pts, bounds: bbox(pts) })}
+                onCommit={(pts) => setNodePoints(projectId, r.id, pts)}
+                onDropPhoto={(file) => handleDropPhoto(r.id, file)}
+              />
+            ) : (
+              <RoomBox
+                key={r.id}
+                room={r}
+                selected={r.id === selectedId}
+                photos={photosByNode[r.id] ?? []}
+                containerRef={containerRef}
+                onSelect={() => setSelectedId(r.id)}
+                onChange={(b) => patch(r.id, { bounds: b })}
+                onCommit={(b) => setNodeBounds(projectId, r.id, b)}
+                onDropPhoto={(file) => handleDropPhoto(r.id, file)}
+              />
+            ),
+          )}
 
           {drawType && (
             <div
@@ -302,8 +437,57 @@ export function PlanEditor({
               )}
             </div>
           )}
+
+          {polyType && (
+            <div
+              className="absolute inset-0 z-10 cursor-crosshair"
+              onPointerDown={polyDown}
+              onPointerMove={(e) => setPolyCursor(relPoint(e))}
+              onDoubleClick={() => {
+                if (polyPoints.length >= 3) void finishPolygon()
+              }}
+            >
+              <svg
+                viewBox="0 0 1 1"
+                preserveAspectRatio="none"
+                className="pointer-events-none absolute inset-0 h-full w-full"
+              >
+                {polyPoints.length > 0 && (
+                  <polyline
+                    points={[...polyPoints, ...(polyCursor ? [polyCursor] : [])]
+                      .map((p) => `${p.x},${p.y}`)
+                      .join(" ")}
+                    fill={`${TYPE_COLOR[polyType]}22`}
+                    stroke={TYPE_COLOR[polyType]}
+                    strokeWidth={2}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                )}
+                {polyPoints.map((p, i) => (
+                  <circle
+                    key={i}
+                    cx={p.x}
+                    cy={p.y}
+                    r={i === 0 && polyPoints.length >= 3 ? 6 : 4}
+                    fill={i === 0 && polyPoints.length >= 3 ? TYPE_COLOR[polyType] : "#fff"}
+                    stroke={TYPE_COLOR[polyType]}
+                    strokeWidth={2}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+              </svg>
+            </div>
+          )}
         </div>
       </div>
+
+      {drawing && (
+        <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-full border border-border bg-card/95 px-3 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur">
+          {polyType
+            ? "Esc to cancel · Enter or double-click to finish"
+            : "Esc to cancel"}
+        </div>
+      )}
     </div>
   )
 }
@@ -337,10 +521,8 @@ function RoomBox({
     rect: DOMRect
   } | null>(null)
   const latest = useRef<Bounds>(room.bounds)
-  latest.current = room.bounds
   const color = TYPE_COLOR[room.type]
 
-  // Bring the box into view when selected from the catalogue.
   useEffect(() => {
     if (selected)
       boxRef.current?.scrollIntoView({ block: "center", inline: "center" })
@@ -351,6 +533,7 @@ function RoomBox({
     onSelect()
     const rect = containerRef.current?.getBoundingClientRect()
     if (!rect) return
+    latest.current = { ...room.bounds }
     drag.current = { dir, px: e.clientX, py: e.clientY, start: { ...room.bounds }, rect }
     e.currentTarget.setPointerCapture(e.pointerId)
   }
@@ -428,26 +611,8 @@ function RoomBox({
         if (file) onDropPhoto(file)
       }}
     >
-      <span
-        className="pointer-events-none absolute left-1 top-1 max-w-[95%] truncate rounded bg-white/85 px-1 text-[11px] font-medium leading-tight"
-        style={{ color }}
-      >
-        {room.name?.trim() || `Unnamed ${room.type}`}
-      </span>
-
-      {photos.length > 0 && (
-        <div className="pointer-events-none absolute bottom-1 left-1 flex gap-1">
-          {photos.slice(0, 3).map((url) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              key={url}
-              src={url}
-              alt=""
-              className="h-6 w-6 rounded object-cover ring-1 ring-white"
-            />
-          ))}
-        </div>
-      )}
+      <RoomLabel name={room.name} type={room.type} color={color} />
+      <RoomPhotos photos={photos} />
 
       {selected &&
         HANDLES.map((dir) => (
@@ -459,6 +624,161 @@ function RoomBox({
             onPointerUp={end}
           />
         ))}
+    </div>
+  )
+}
+
+function RoomPolygon({
+  room,
+  points,
+  selected,
+  photos,
+  containerRef,
+  onSelect,
+  onChange,
+  onCommit,
+  onDropPhoto,
+}: {
+  room: Room
+  points: Point[]
+  selected: boolean
+  photos: string[]
+  containerRef: React.RefObject<HTMLDivElement | null>
+  onSelect: () => void
+  onChange: (pts: Point[]) => void
+  onCommit: (pts: Point[]) => void
+  onDropPhoto: (file: File) => void
+}) {
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [dragOver, setDragOver] = useState(false)
+  const drag = useRef<{ px: number; py: number; start: Point[]; rect: DOMRect } | null>(
+    null,
+  )
+  const latest = useRef<Point[]>(points)
+  const color = TYPE_COLOR[room.type]
+  const b = room.bounds
+
+  useEffect(() => {
+    if (selected)
+      boxRef.current?.scrollIntoView({ block: "center", inline: "center" })
+  }, [selected])
+
+  function begin(e: React.PointerEvent) {
+    e.stopPropagation()
+    onSelect()
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const start = points.map((p) => ({ ...p }))
+    latest.current = start
+    drag.current = { px: e.clientX, py: e.clientY, start, rect }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  function move(e: React.PointerEvent) {
+    const d = drag.current
+    if (!d) return
+    const dx = (e.clientX - d.px) / d.rect.width
+    const dy = (e.clientY - d.py) / d.rect.height
+    const box = bbox(d.start)
+    const tdx = clamp(dx, -box.x, 1 - box.w - box.x)
+    const tdy = clamp(dy, -box.y, 1 - box.h - box.y)
+    const next = d.start.map((p) => ({ x: p.x + tdx, y: p.y + tdy }))
+    latest.current = next
+    onChange(next)
+  }
+  function end() {
+    if (!drag.current) return
+    drag.current = null
+    onCommit(latest.current)
+  }
+
+  // Polygon points as percentages within the bounding box, for the SVG.
+  const local = points
+    .map((p) => `${((p.x - b.x) / (b.w || 1)) * 100},${((p.y - b.y) / (b.h || 1)) * 100}`)
+    .join(" ")
+
+  return (
+    <div
+      ref={boxRef}
+      className="absolute"
+      style={{
+        left: `${b.x * 100}%`,
+        top: `${b.y * 100}%`,
+        width: `${b.w * 100}%`,
+        height: `${b.h * 100}%`,
+        cursor: "move",
+      }}
+      onPointerDown={begin}
+      onPointerMove={move}
+      onPointerUp={end}
+      onClick={(e) => {
+        e.stopPropagation()
+        onSelect()
+      }}
+      onDragOver={(e) => {
+        e.preventDefault()
+        if (!dragOver) setDragOver(true)
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault()
+        setDragOver(false)
+        const file = Array.from(e.dataTransfer.files).find((f) =>
+          f.type.startsWith("image/"),
+        )
+        if (file) onDropPhoto(file)
+      }}
+    >
+      <svg
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
+      >
+        <polygon
+          points={local}
+          fill={dragOver ? `${color}44` : `${color}22`}
+          stroke={color}
+          strokeWidth={selected ? 3 : 2}
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      <RoomLabel name={room.name} type={room.type} color={color} />
+      <RoomPhotos photos={photos} />
+    </div>
+  )
+}
+
+function RoomLabel({
+  name,
+  type,
+  color,
+}: {
+  name: string | null
+  type: NodeType
+  color: string
+}) {
+  return (
+    <span
+      className="pointer-events-none absolute left-1 top-1 max-w-[95%] truncate rounded bg-white/85 px-1 text-[11px] font-medium leading-tight"
+      style={{ color }}
+    >
+      {name?.trim() || `Unnamed ${type}`}
+    </span>
+  )
+}
+
+function RoomPhotos({ photos }: { photos: string[] }) {
+  if (photos.length === 0) return null
+  return (
+    <div className="pointer-events-none absolute bottom-1 left-1 flex gap-1">
+      {photos.slice(0, 3).map((url) => (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          key={url}
+          src={url}
+          alt=""
+          className="h-6 w-6 rounded object-cover ring-1 ring-white"
+        />
+      ))}
     </div>
   )
 }
