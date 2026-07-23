@@ -14,6 +14,7 @@ import {
   setNodePoints,
   addNode,
   addPolygonNode,
+  deleteNode,
 } from "@/app/projects/spatial-actions"
 import { addNodePhoto } from "@/app/projects/actions"
 import { useEditorStore } from "@/lib/store/editor"
@@ -84,25 +85,62 @@ function toRoom(n: GraphNode): Room {
 
 export function PlanEditor({
   projectId,
+  revision,
   planUrl,
   nodes,
   photosByNode,
 }: {
   projectId: string
+  revision: string
   planUrl: string | null
   nodes: GraphNode[]
   photosByNode: Record<string, string[]>
 }) {
   const router = useRouter()
   const containerRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const [rooms, setRooms] = useState<Room[]>(() => nodes.map(toRoom))
   const selectedId = useEditorStore((s) => s.selectedId)
   const setSelectedId = useEditorStore((s) => s.setSelectedId)
+
+  // Reconcile local rooms with the server graph when it changes (create / delete
+  // / rename / photo / assistant) — without remounting, so the plan image and
+  // zoom/scroll are preserved. Adjusting state during render is React's canonical
+  // pattern for "reset state when a prop changes".
+  const [prevRevision, setPrevRevision] = useState(revision)
+  if (prevRevision !== revision) {
+    setPrevRevision(revision)
+    setRooms(nodes.map(toRoom))
+  }
+
+  // Keep the plan image src stable across refreshes: signed URLs change every
+  // server render, but the underlying file (the path before "?") usually does
+  // not — so only swap src (and reload the image) when the path changes.
+  const pathOf = (u: string | null) => (u ? u.split("?")[0] : u)
+  const [imgSrc, setImgSrc] = useState(planUrl)
+  const [imgPath, setImgPath] = useState(() => pathOf(planUrl))
+  if (pathOf(planUrl) !== imgPath) {
+    setImgPath(pathOf(planUrl))
+    setImgSrc(planUrl)
+  }
 
   const [zoom, setZoom] = useState(() => persistedZoom)
   useEffect(() => {
     persistedZoom = zoom
   }, [zoom])
+
+  // Trackpad pinch / ctrl+wheel to zoom (plain two-finger scroll still pans).
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return
+      e.preventDefault()
+      setZoom((z) => clamp(Math.round((z - e.deltaY * 0.01) * 100) / 100, 0.5, 3))
+    }
+    el.addEventListener("wheel", onWheel, { passive: false })
+    return () => el.removeEventListener("wheel", onWheel)
+  }, [])
 
   // Object type used by both draw modes.
   const [newType, setNewType] = useState<NodeType>("room")
@@ -211,6 +249,9 @@ export function PlanEditor({
         drawStart.current = null
       } else if (e.key === "Enter" && polyType && polyPoints.length >= 3) {
         void finishPolygon()
+      } else if (e.key === "Backspace" && polyType && polyPoints.length > 0) {
+        e.preventDefault()
+        setPolyPoints((pts) => pts.slice(0, -1))
       }
     }
     window.addEventListener("keydown", onKey)
@@ -218,9 +259,15 @@ export function PlanEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [polyType, polyPoints])
 
-  // ── Copy / paste the selected object ──────────────────────────────
-  const stateRef = useRef({ rooms, selectedId })
-  stateRef.current = { rooms, selectedId }
+  function deleteRoom(id: string) {
+    setRooms((rs) => rs.filter((r) => r.id !== id))
+    setSelectedId(null)
+    void deleteNode(projectId, id).then(() => router.refresh())
+  }
+
+  // ── Keyboard: delete + copy / paste the selected object ───────────
+  const stateRef = useRef({ rooms, selectedId, drawing: false })
+  stateRef.current = { rooms, selectedId, drawing: !!(drawType || polyType) }
   const clipboard = useRef<{
     type: NodeType
     bounds?: Bounds
@@ -230,8 +277,14 @@ export function PlanEditor({
     function onKey(e: KeyboardEvent) {
       const el = document.activeElement
       if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return
+      const { rooms, selectedId, drawing } = stateRef.current
+      // Backspace / Delete removes the selected object (not while drawing).
+      if ((e.key === "Backspace" || e.key === "Delete") && selectedId && !drawing) {
+        e.preventDefault()
+        deleteRoom(selectedId)
+        return
+      }
       if (!(e.metaKey || e.ctrlKey)) return
-      const { rooms, selectedId } = stateRef.current
       if (e.key === "c" && selectedId) {
         const r = rooms.find((x) => x.id === selectedId)
         if (r) {
@@ -363,7 +416,7 @@ export function PlanEditor({
         )}
       </div>
 
-      <div className="bg-grid h-full w-full overflow-auto bg-secondary/50">
+      <div ref={scrollRef} className="bg-grid h-full w-full overflow-auto bg-secondary/50">
         <div
           ref={containerRef}
           className="relative mx-auto my-4 select-none"
@@ -372,10 +425,10 @@ export function PlanEditor({
             if (e.target === e.currentTarget) setSelectedId(null)
           }}
         >
-          {planUrl ? (
+          {imgSrc ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={planUrl}
+              src={imgSrc}
               alt="Floor plan"
               className="block w-full rounded border bg-white"
               draggable={false}

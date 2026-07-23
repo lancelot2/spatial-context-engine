@@ -84,9 +84,9 @@ export default async function ProjectPage({
     }
   }
 
-  // Remount the editor when server data meaningfully changes (e.g. the assistant
-  // updates the graph). The editor's own edits don't revalidate, so this only
-  // fires on assistant actions, uploads, or navigation — never mid-edit.
+  // A signature of the server graph. Passed to the editor as `revision` so it
+  // reconciles its local rooms when the data changes — WITHOUT remounting (which
+  // would reload the plan image and reset zoom/scroll on every edit).
   const graphKey =
     nodes
       .map(
@@ -158,7 +158,8 @@ export default async function ProjectPage({
             <PlanDropzone projectId={project.id} />
           ) : (
             <PlanEditor
-              key={graphKey}
+              key={project.plan_path ?? "no-plan"}
+              revision={graphKey}
               projectId={project.id}
               planUrl={planUrl}
               nodes={nodes}
